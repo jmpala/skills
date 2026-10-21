@@ -1,6 +1,6 @@
 ---
 name: learning-notes
-description: Extract computer-science concepts, theory and techniques that came up in a Claude conversation and record them in a daily Markdown study log (~/learning/YYYY-MM-DD.md), each with a short explanation, the context it came up in, verified book chapters to read, online resources and related concepts. Use this whenever the user asks to log, capture or note what they learned, wants reading recommendations for concepts from the current session, says things like "update my learning notes", "process my learning queue", "add this to my learning notes", "what should I read about this", "save the concepts from this chat".
+description: Extract computer-science concepts, theory and techniques that came up in a Claude conversation and record them in a daily Markdown study log (~/learning/YYYY-MM-DD.md), each with a short explanation, the context it came up in, verified book chapters to read, online resources and related concepts. Use this whenever the user asks to log, capture or note what they learned, wants reading recommendations for concepts from the current session, says things like "update my learning notes", "process my learning queue", "add this to my learning notes", "what should I read about this", "save the concepts from this chat", "send my learning notes to ClickUp", "create review tasks for my lessons".
 ---
 
 # Learning Notes
@@ -17,6 +17,7 @@ Pick the mode from what the user asked:
 
 1. **Queue mode** (default, e.g. "update my learning notes") — process every `.txt` file in the queue. Also count the current conversation as one more session, unless it's only about running this skill. If the queue is empty, say so and stop.
 2. **This-conversation mode** (e.g. "add what we just discussed to my notes") — use only the current conversation; project = current working directory; date = today. Leave the queue alone.
+3. **ClickUp-only mode** (e.g. "send my learning notes to ClickUp") — run Step 5 only.
 
 In queue mode, work through Steps 1–4 across *all* sessions together rather than one session at a time. The same concept often shows up in several sessions, and researching it once is the point of batching. Write each concept into the day file for the date of the session where it came up; if it came up in sessions on different days, give each day its own entry. After the entries are written, delete the queue files you processed, so they're not logged twice. Delete a session's file even if it yielded no concepts. Leave the queue alone if anything failed before the writes.
 
@@ -76,11 +77,28 @@ For **Related**, prefer concepts already in the log (any day) so the notes link 
 
 When updating an existing entry with a new sighting, append another `**Context:**` line below the first.
 
+Never write, change or remove a `**ClickUp:**` line yourself; only the Step 5 script does that.
+
+## Step 5: Send review tasks to ClickUp
+
+The user reviews each concept as a task in their **personal** ClickUp list, one task per concept. Run this after Step 4 in queue and this-conversation mode, and alone in ClickUp-only mode:
+
+```bash
+python3 -I ~/.claude/skills/learning-notes/scripts/clickup_sync.py
+```
+
+- It reads `LEARNING_NOTES_CLICKUP_TOKEN` (personal API token, `pk_…`) and `LEARNING_NOTES_CLICKUP_LIST_ID` from `~/.config/learning-notes/personal-clickup.env` (`KEY=value` lines, mode `600`). Never read or print that file yourself. Never use the work token `CLICKUP_API_TOKEN` or the ClickUp MCP tools for this: they point to the work account.
+- The day files are the source of truth. A sent entry ends with `**ClickUp:** [<id>](<url>) · sent <date>`. The script groups entries by heading across all day files, so a concept is sent only once. A later entry for a sent concept gets the same marker copied, and no new task.
+- The task title is the concept name. The description lists the review actions: re-read the note, each book chapter and online resource as a checkbox, explain it from memory, find it in own code, review the related concepts.
+- Use `--dry-run` to see what it would send without a write or an API call.
+- Output lines: `SENT`, `COPIED`, `FAILED: <name>: <error>`, or `MISSING_CONFIG: …` (exit code 2, nothing sent) when the file or one of its values is missing. On `MISSING_CONFIG`, tell the user the exact line and the path where the file must be; do not ask for the token in chat. A failed concept stays unmarked and is sent again on the next run. A new Context line on an already-sent concept does not update its task.
+
 ## Finish
 
 Tell the user briefly:
 - how many sessions you processed
 - which concepts you logged, by name, grouped by day file
 - any chapters you marked `(chapter unverified)`
+- the ClickUp result: tasks sent (with links), markers copied, and every `FAILED`, `MISSING_CONFIG` or `WARNING` line as is
 
 Then give the path of each file you changed.
